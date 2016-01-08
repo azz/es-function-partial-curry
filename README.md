@@ -58,26 +58,41 @@ obj; //=> { foo: 0, bar: 1 }
 
 The above demonstrates that `this` can be bound _after_ a partial or curried function is created.
 
-Usage with `class`es:
+Usage with immutable `class`es and lazy execution: ([Try in Babel REPL](https://babeljs.io/repl/#?experimental=true&evaluate=true&loose=false&spec=false&code=%22use%20strict%22%3B%0A%0AFunction.prototype.partial%20%3D%20function%20%28...bindArgs%29%20%7B%0A%20%20const%20fn%20%3D%20this%3B%0A%20%20return%20function%20%28...args%29%20%7B%0A%20%20%20%20return%20fn.call%28this%2C%20...bindArgs%2C%20...args%29%0A%20%20%7D%0A%7D%0A%0AFunction.prototype.curry%20%3D%20function%20%28...bindArgs%29%20%7B%0A%20%20const%20fn%20%3D%20this%3B%0A%20%20return%20function%20%28...args%29%20%7B%0A%20%20%20%20return%20args.length%20%3D%3D%3D%200%0A%20%20%20%20%20%20%3F%20fn.call%28this%2C%20...bindArgs%29%0A%20%20%20%20%20%20%3A%20fn.curry.call%28fn%2C%20...bindArgs%2C%20...args%29%3B%0A%20%20%7D%0A%7D%0A%0Aclass%20Stack%20%7B%0A%20%20constructor%28...vals%29%20%7B%0A%20%20%20%20this._list%20%3D%20%5B...vals%5D%3B%0A%20%20%7D%0A%20%20push%28...vals%29%20%7B%0A%20%20%20%20return%20new%20Stack%28...this._list%2C%20...vals%29%3B%0A%20%20%7D%0A%20%20%0A%20%20pop%28%29%20%7B%20return%20new%20Stack%28...this._list.slice%280%2C%20-1%29%29%3B%20%7D%0A%20%20top%28%29%20%7B%20return%20this._list.slice%28-1%29%3B%20%7D%0A%20%20%0A%20%20toString%28%29%20%7B%20return%20this._list.toString%28%29%3B%20%7D%0A%7D%0A%0Aconst%20stack%20%3D%20new%20Stack%281%2C%202%2C%203%29%3B%0A%0Afunction%20lazilyAddItems%28items%29%20%7B%0A%20%20if%20%28!items.length%29%20return%20this%3B%0A%20%20return%20this%28...items%29%3B%0A%7D%0A%0Aconst%20curriedPush%20%3D%20Stack.prototype.push.curry%28%29%0A%20%20%3A%3AlazilyAddItems%28%5B4%2C%205%2C%206%5D%29%0A%20%20%3A%3AlazilyAddItems%28%5B7%2C%208%2C%209%5D%29%3B%0A%0Aconst%20stack2%20%3D%20stack%3A%3AcurriedPush%28%29%3B%20%2F%2F%20late%20binding%20%28curried.call%28stack%29%29%0Aconsole.log%28stack2.toString%28%29%29%20%2F%2F%3D%3E%201%2C2%2C3%2C4%2C5%2C6%2C7%2C8%2C9%0A%0Aconst%20stack3%20%3D%20%28new%20Stack%29%3A%3AcurriedPush%28%29%3B%0Aconsole.log%28stack3.toString%28%29%29%20%2F%2F%3D%3E%204%2C5%2C6%2C7%2C8%2C9%0A%0Aconsole.log%28stack.toString%28%29%29%20%2F%2F%3D%3E%201%2C2%2C3%20%28immutable%29))
 
 ```js
-class ImmutablePoint {
-  constructor(x=0, y=0) {
-    this.x = x;
-    this.y = y;
+class Stack {
+  constructor(...vals) {
+    this._list = [...vals];
   }
-  translated(dX, dY) {
-    return new ImmutablePoint(this.x + dX, this.y + dY);
+  push(...vals) {
+    return new Stack(...this._list, ...vals);
   }
+
+  pop() { return new Stack(...this._list.slice(0, -1)); }
+  top() { return this._list.slice(-1); }
+
+  toString() { return this._list.toString(); }
 }
 
-const origin = new ImmutablePoint;
-const translate = (::origin.translated).curry();
-// Same as `origin.translated.bind(origin).curry()`
-const translateY = y => translate(0)(y)();
-const translateX = x => translate(x)(0)();
+const stack = new Stack(1, 2, 3);
 
-let point = translateX(translateY(-1), 1); //=> x: 1, y: -1
+function lazilyAddItems(items) {
+  if (!items.length) return this;
+  return this(...items);
+}
+
+const curriedPush = Stack.prototype.push.curry()
+  ::lazilyAddItems([4, 5, 6])
+  ::lazilyAddItems([7, 8, 9]);
+
+const stack2 = stack::curriedPush(); // late binding (curried.call(stack))
+console.log(stack2.toString()) //=> 1,2,3,4,5,6,7,8,9
+
+const stack3 = (new Stack)::curriedPush();
+console.log(stack3.toString()) //=> 4,5,6,7,8,9
+
+console.log(stack.toString()) //=> 1,2,3 (immutable)
 ```
 
 ## Notes
